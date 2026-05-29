@@ -303,12 +303,15 @@
         const checkEmbed = await embedSlice(outDoc, sourceDoc, i + halfPages, quad);
         const outPage = outDoc.addPage(OUTPUT_PAGE);
 
-        const labelFit = fitInsideBox(quad.w, quad.h, LABEL_WIDTH_PT, labelAreaH);
+        // Escala para preencher exatamente 100mm de largura
+        const labelScale = LABEL_WIDTH_PT / Math.max(1, quad.w);
+        const labelDrawH = quad.h * labelScale;
+        const labelY = checkAreaH + (labelAreaH - labelDrawH) / 2;
         outPage.drawPage(labelEmbed, {
-          x: (LABEL_WIDTH_PT - labelFit.width) / 2,
-          y: checkAreaH + (labelAreaH - labelFit.height) / 2,
-          xScale: labelFit.scale,
-          yScale: labelFit.scale,
+          x: 0,
+          y: labelY,
+          xScale: labelScale,
+          yScale: labelScale,
         });
 
         // Checklist rotacionado -90° (CW) para leitura horizontal
@@ -1082,12 +1085,14 @@
                 const checkEmbed = await embedSlice(outDoc, sourceDoc, i + halfPages, quad);
                 const outPage = outDoc.addPage([LABEL_WIDTH_PT, LABEL_HEIGHT_PT]);
 
-                const labelFit = fitInsideBox(quad.w, quad.h, LABEL_WIDTH_PT, labelAreaH);
+                const labelScale = LABEL_WIDTH_PT / Math.max(1, quad.w);
+                const labelDrawH = quad.h * labelScale;
+                const labelY = checkAreaH + (labelAreaH - labelDrawH) / 2;
                 outPage.drawPage(labelEmbed, {
-                  x: (LABEL_WIDTH_PT - labelFit.width) / 2,
-                  y: checkAreaH + (labelAreaH - labelFit.height) / 2,
-                  xScale: labelFit.scale,
-                  yScale: labelFit.scale,
+                  x: 0,
+                  y: labelY,
+                  xScale: labelScale,
+                  yScale: labelScale,
                 });
 
                 const checkScale = Math.min(
