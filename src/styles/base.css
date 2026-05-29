@@ -197,3 +197,80 @@ a {
     animation: none;
   }
 }
+
+/* ── Impressão ─────────────────────────────────────────────────────────────── */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0mm;
+  }
+
+  html,
+  body {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    color: #000 !important;
+    overflow: visible !important;
+  }
+
+  /* Oculta toda a interface — só o iframe com o PDF deve aparecer */
+  .ambient,
+  .topbar,
+  .panel-card:not(.panel-card--preview),
+  .status-block,
+  .preview-header,
+  .preview-title,
+  .thumb-grid,
+  .summary,
+  .tips,
+  .footer-note,
+  .toasts,
+  .viewer,
+  #btnOpenPreview,
+  #btnDownload,
+  #btnTestPage {
+    display: none !important;
+  }
+
+  .page {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .panel,
+  .panel-grid,
+  .panel-card--preview,
+  .preview-card,
+  .preview-body {
+    display: block !important;
+    width: 210mm !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  /* O iframe com o PDF preenche toda a folha A4 */
+  .preview-frame {
+    display: block !important;
+    width: 210mm !important;
+    height: 297mm !important;
+    max-width: none !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  img,
+  svg,
+  canvas {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+}

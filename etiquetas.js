@@ -221,6 +221,18 @@
     };
   }
 
+  // Escala priorizando a largura: preenche boxW, desde que a altura não ultrapasse boxH.
+  // Caso exceda, recai em fitInsideBox.
+  function fitMaxWidth(srcW, srcH, boxW, boxH) {
+    const safeW = Math.max(1, srcW);
+    const safeH = Math.max(1, srcH);
+    const scaleW = boxW / safeW;
+    if (safeH * scaleW <= boxH) {
+      return { scale: scaleW, width: safeW * scaleW, height: safeH * scaleW };
+    }
+    return fitInsideBox(srcW, srcH, boxW, boxH);
+  }
+
   function toBoundingBox(slice) {
     return {
       left: slice.x,
@@ -272,9 +284,11 @@
   // Renderiza um quadrante de uma página com tratamento correto de rotação,
   // dentro de uma zona retangular (boxW × boxH) a partir de (originX, originY).
   // Usa a mesma lógica do modo standard.
-  function drawQuadInZone(outPage, embedded, slice, mappedSlice, rotation, boxW, boxH, originX, originY) {
+  function drawQuadInZone(outPage, embedded, slice, mappedSlice, rotation, boxW, boxH, originX, originY, preferWidth = false) {
     const { degrees } = getPdfLib();
-    const fit = fitInsideBox(slice.w, slice.h, boxW, boxH);
+    const fit = preferWidth
+      ? fitMaxWidth(slice.w, slice.h, boxW, boxH)
+      : fitInsideBox(slice.w, slice.h, boxW, boxH);
     const x0  = originX + (boxW - fit.width)  / 2;
     const y0  = originY + (boxH - fit.height) / 2;
     const sW  = mappedSlice.w * fit.scale;
@@ -298,9 +312,9 @@
     const OUT_W = A4_WIDTH_PT;   // 595 pt = 210 mm
     const OUT_H = A4_HEIGHT_PT;  // 842 pt = 297 mm
 
-    // Compacto: etiqueta 60 % / checklist 40 % — ambos em retrato, sem rotação.
-    const LABEL_ZONE = OUT_H * 0.60;       // ≈ 505 pt
-    const CHECK_ZONE = OUT_H - LABEL_ZONE; // ≈ 337 pt
+    // Compacto: 55 % etiqueta / 45 % checklist — preferWidth preenche a largura total.
+    const LABEL_ZONE = OUT_H * 0.55;       // ≈ 463 pt
+    const CHECK_ZONE = OUT_H - LABEL_ZONE; // ≈ 379 pt
 
     const totalItems = halfPages * 4;
     let done = 0;
@@ -366,13 +380,13 @@
           // ── Compacto: etiqueta (70 %) + checklist (30 %) em um A4 ───────
           const pg = outDoc.addPage([OUT_W, OUT_H]);
 
-          // Etiqueta na zona superior
+          // Etiqueta na zona superior — preferWidth: preenche a largura total
           drawQuadInZone(pg, lEmbed, lSlice, lMapped, lRot,
-            OUT_W, LABEL_ZONE, 0, CHECK_ZONE);
+            OUT_W, LABEL_ZONE, 0, CHECK_ZONE, true);
 
-          // Checklist na zona inferior, em retrato
+          // Checklist na zona inferior — preferWidth: preenche a largura total
           drawQuadInZone(pg, cEmbed, cSlice, cMapped, cRot,
-            OUT_W, CHECK_ZONE, 0, 0);
+            OUT_W, CHECK_ZONE, 0, 0, true);
         }
 
         done += 1;
@@ -994,6 +1008,13 @@
         return { scale: sc, width: sW * sc, height: sH * sc };
       };
 
+      const fitMaxWidth = (srcW, srcH, boxW, boxH) => {
+        const sW = Math.max(1, srcW), sH = Math.max(1, srcH);
+        const sc = boxW / sW;
+        if (sH * sc <= boxH) return { scale: sc, width: sW * sc, height: sH * sc };
+        return fitInsideBox(srcW, srcH, boxW, boxH);
+      };
+
       const toBoundingBox = (sl) => ({ left: sl.x, bottom: sl.y, right: sl.x + sl.w, top: sl.y + sl.h });
 
       const embedSlice = async (outDoc, srcDoc, idx, sl) => {
@@ -1022,13 +1043,13 @@
           if (modeId === 'checklist' || modeId === 'checklist-expanded') {
             const halfPages  = Math.floor(pages.length / 2);
             const isExpanded = modeId === 'checklist-expanded';
-            const LABEL_ZONE = A4_H * 0.60;
+            const LABEL_ZONE = A4_H * 0.55;
             const CHECK_ZONE = A4_H - LABEL_ZONE;
             let done = 0;
             const totalItems = halfPages * 4;
 
-            const drawInZone = (pg, emb, sl, ms, rot, bW, bH, ox, oy) => {
-              const fit = fitInsideBox(sl.w, sl.h, bW, bH);
+            const drawInZone = (pg, emb, sl, ms, rot, bW, bH, ox, oy, preferW = false) => {
+              const fit = preferW ? fitMaxWidth(sl.w, sl.h, bW, bH) : fitInsideBox(sl.w, sl.h, bW, bH);
               const x0  = ox + (bW - fit.width)  / 2;
               const y0  = oy + (bH - fit.height) / 2;
               const sW  = ms.w * fit.scale, sH = ms.h * fit.scale;
@@ -1072,8 +1093,8 @@
                   drawInZone(p2, cE, cs, cm, cRot, A4_W, A4_H, 0, 0);
                 } else {
                   const pg = outDoc.addPage([A4_W, A4_H]);
-                  drawInZone(pg, lE, ls, lm, lRot, A4_W, LABEL_ZONE, 0, CHECK_ZONE);
-                  drawInZone(pg, cE, cs, cm, cRot, A4_W, CHECK_ZONE, 0, 0);
+                  drawInZone(pg, lE, ls, lm, lRot, A4_W, LABEL_ZONE, 0, CHECK_ZONE, true);
+                  drawInZone(pg, cE, cs, cm, cRot, A4_W, CHECK_ZONE, 0, 0, true);
                 }
 
                 done += 1;
