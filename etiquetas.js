@@ -303,21 +303,23 @@
 
 
   // Desenha o checklist girado -90° dentro de uma zona (boxW × boxH).
-  // totalRot = (srcRot + 270) % 360 combina rotação da página com o -90° extra.
-  function drawChecklistRotated(outPage, embedded, mappedSlice, srcRot, boxW, boxH, originX, originY) {
+  // targetWidth: se fornecido, força a largura visual a esse valor (para igualar à etiqueta).
+  function drawChecklistRotated(outPage, embedded, mappedSlice, srcRot, boxW, boxH, originX, originY, targetWidth) {
     const { degrees } = getPdfLib();
     const totalRot = (srcRot + 270) % 360;
     const eW = mappedSlice.w, eH = mappedSlice.h;
     const visW = (totalRot === 90 || totalRot === 270) ? eH : eW;
     const visH = (totalRot === 90 || totalRot === 270) ? eW : eH;
-    const fit  = fitMaxWidth(visW, visH, boxW, boxH);
-    const x0   = originX + (boxW - visW * fit.scale) / 2;
-    const y0   = originY + (boxH - visH * fit.scale) / 2;
-    const sW   = eW * fit.scale, sH = eH * fit.scale;
+    const scale = targetWidth != null
+      ? Math.min(targetWidth / Math.max(1, visW), boxH / Math.max(1, visH))
+      : fitMaxWidth(visW, visH, boxW, boxH).scale;
+    const x0   = originX + (boxW - visW * scale) / 2;
+    const y0   = originY + (boxH - visH * scale) / 2;
+    const sW   = eW * scale, sH = eH * scale;
     const pl   = getRotationPlacement(totalRot, sW, sH, x0, y0);
     outPage.drawPage(embedded, {
       x: pl.x, y: pl.y,
-      xScale: fit.scale, yScale: fit.scale,
+      xScale: scale, yScale: scale,
       rotate: degrees(totalRot),
     });
   }
@@ -399,11 +401,15 @@
         } else {
           const pg = outDoc.addPage([OUT_W, OUT_H]);
 
+          // Calcula largura real do label para forçar o checklist à mesma largura
+          const lFit     = fitMaxWidth(lSlice.w, lSlice.h, OUT_W, LABEL_ZONE);
+          const labelVisW = lSlice.w * lFit.scale;
+
           drawQuadInZone(pg, lEmbed, lSlice, lMapped, lRot,
             OUT_W, LABEL_ZONE, 0, CHECK_ZONE, true);
 
           drawChecklistRotated(pg, cEmbed, cMapped, cRot,
-            OUT_W, CHECK_ZONE, 0, 0);
+            OUT_W, CHECK_ZONE, 0, 0, labelVisW);
         }
 
         done += 1;
@@ -1075,17 +1081,19 @@
                 rotate: rot ? degrees(rot) : undefined });
             };
 
-            const drawCheckRotated = (pg, emb, ms, srcRot, bW, bH, ox, oy) => {
+            const drawCheckRotated = (pg, emb, ms, srcRot, bW, bH, ox, oy, targetWidth) => {
               const totalRot = (srcRot + 270) % 360;
               const eW = ms.w, eH = ms.h;
               const visW = (totalRot === 90 || totalRot === 270) ? eH : eW;
               const visH = (totalRot === 90 || totalRot === 270) ? eW : eH;
-              const fit  = fitMaxWidth(visW, visH, bW, bH);
-              const x0   = ox + (bW - visW * fit.scale) / 2;
-              const y0   = oy + (bH - visH * fit.scale) / 2;
-              const sW   = eW * fit.scale, sH = eH * fit.scale;
+              const scale = targetWidth != null
+                ? Math.min(targetWidth / Math.max(1, visW), bH / Math.max(1, visH))
+                : fitMaxWidth(visW, visH, bW, bH).scale;
+              const x0   = ox + (bW - visW * scale) / 2;
+              const y0   = oy + (bH - visH * scale) / 2;
+              const sW   = eW * scale, sH = eH * scale;
               const pl   = getRotationPlacement(totalRot, sW, sH, x0, y0);
-              pg.drawPage(emb, { x: pl.x, y: pl.y, xScale: fit.scale, yScale: fit.scale,
+              pg.drawPage(emb, { x: pl.x, y: pl.y, xScale: scale, yScale: scale,
                 rotate: degrees(totalRot) });
             };
 
@@ -1124,8 +1132,9 @@
                   drawInZone(p2, cE, cs, cm, cRot, A4_W, A4_H, 0, 0, true);
                 } else {
                   const pg = outDoc.addPage([A4_W, A4_H]);
+                  const lFitW = fitMaxWidth(ls.w, ls.h, A4_W, LABEL_ZONE);
                   drawInZone(pg, lE, ls, lm, lRot, A4_W, LABEL_ZONE, 0, CHECK_ZONE, true);
-                  drawCheckRotated(pg, cE, cm, cRot, A4_W, CHECK_ZONE, 0, 0);
+                  drawCheckRotated(pg, cE, cm, cRot, A4_W, CHECK_ZONE, 0, 0, ls.w * lFitW.scale);
                 }
 
                 done += 1;
