@@ -269,7 +269,7 @@
   }
 
   async function renderOutputPdfChecklistCombined({ sourceDoc, onProgress, shouldCancel }) {
-    const { PDFDocument } = getPdfLib();
+    const { PDFDocument, degrees } = getPdfLib();
     const outDoc = await PDFDocument.create();
     const pages = sourceDoc.getPages();
     const halfPages = Math.floor(pages.length / 2);
@@ -311,12 +311,22 @@
           yScale: labelFit.scale,
         });
 
-        const checkFit = fitInsideBox(quad.w, quad.h, LABEL_WIDTH_PT, checkAreaH);
+        // Checklist rotacionado 90° (CCW) para leitura horizontal
+        // Após rotação, dimensão visual = quad.h × quad.w
+        const checkScale = Math.min(
+          LABEL_WIDTH_PT / Math.max(1, quad.h),
+          checkAreaH / Math.max(1, quad.w)
+        );
+        const scaledW = quad.w * checkScale;
+        const scaledH = quad.h * checkScale;
+        const cx0 = (LABEL_WIDTH_PT - scaledH) / 2;
+        const cy0 = (checkAreaH - scaledW) / 2;
         outPage.drawPage(checkEmbed, {
-          x: (LABEL_WIDTH_PT - checkFit.width) / 2,
-          y: (checkAreaH - checkFit.height) / 2,
-          xScale: checkFit.scale,
-          yScale: checkFit.scale,
+          x: cx0 + scaledH,
+          y: cy0,
+          xScale: checkScale,
+          yScale: checkScale,
+          rotate: degrees(90),
         });
 
         done += 1;
@@ -1080,12 +1090,20 @@
                   yScale: labelFit.scale,
                 });
 
-                const checkFit = fitInsideBox(quad.w, quad.h, LABEL_WIDTH_PT, checkAreaH);
+                const checkScale = Math.min(
+                  LABEL_WIDTH_PT / Math.max(1, quad.h),
+                  checkAreaH / Math.max(1, quad.w)
+                );
+                const scaledW = quad.w * checkScale;
+                const scaledH = quad.h * checkScale;
+                const cx0 = (LABEL_WIDTH_PT - scaledH) / 2;
+                const cy0 = (checkAreaH - scaledW) / 2;
                 outPage.drawPage(checkEmbed, {
-                  x: (LABEL_WIDTH_PT - checkFit.width) / 2,
-                  y: (checkAreaH - checkFit.height) / 2,
-                  xScale: checkFit.scale,
-                  yScale: checkFit.scale,
+                  x: cx0 + scaledH,
+                  y: cy0,
+                  xScale: checkScale,
+                  yScale: checkScale,
+                  rotate: degrees(90),
                 });
 
                 done += 1;
