@@ -302,8 +302,8 @@
   }
 
 
-  // Modo checklist: PDF com 1 etiqueta por página.
-  // Primeira metade = etiquetas, segunda metade = checklists correspondentes.
+  // Modo checklist: PDF com grade 2×2 (4 etiquetas por página).
+  // Primeira metade das páginas = etiquetas, segunda metade = checklists correspondentes.
   async function renderOutputPdfChecklistCombined({ sourceDoc, modeId, onProgress, shouldCancel }) {
     const { PDFDocument } = getPdfLib();
     const outDoc    = await PDFDocument.create();
@@ -314,10 +314,11 @@
     const OUT_W = A4_WIDTH_PT;   // 595 pt = 210 mm
     const OUT_H = A4_HEIGHT_PT;  // 842 pt = 297 mm
 
-    // Compacto: etiqueta 60 % da altura / checklist 40 % — cada uma usa a página inteira da fonte.
-    const LABEL_ZONE = OUT_H * 0.60;       // ≈ 505 pt
-    const CHECK_ZONE = OUT_H - LABEL_ZONE; // ≈ 337 pt
+    // Compacto: etiqueta 60 % / checklist 40 % da altura do A4.
+    const LABEL_ZONE = OUT_H * 0.60;
+    const CHECK_ZONE = OUT_H - LABEL_ZONE;
 
+    const totalItems = halfPages * 4;
     let done = 0;
 
     for (let i = 0; i < halfPages; i += 1) {
@@ -327,49 +328,69 @@
         throw err;
       }
 
-      // Página de etiqueta (1 por página)
+      // Página de etiquetas (grade 2×2)
       const lPage  = pages[i];
       const lSz    = lPage.getSize();
       const lRot   = normalizeRotation(lPage.getRotation()?.angle);
       const lDisp  = getDisplaySize(lSz, lRot);
-      const lSlice = { x: 0, y: 0, w: lDisp.width, h: lDisp.height };
-      const lMapped = mapSliceToUnrotated(lSlice, lSz.width, lSz.height, lRot);
+      const lqW    = lDisp.width  / 2;
+      const lqH    = lDisp.height / 2;
 
-      // Página de checklist (1 por página)
+      // Página de checklists (grade 2×2, mesma estrutura)
       const cPage  = pages[i + halfPages];
       const cSz    = cPage.getSize();
       const cRot   = normalizeRotation(cPage.getRotation()?.angle);
       const cDisp  = getDisplaySize(cSz, cRot);
-      const cSlice = { x: 0, y: 0, w: cDisp.width, h: cDisp.height };
-      const cMapped = mapSliceToUnrotated(cSlice, cSz.width, cSz.height, cRot);
+      const cqW    = cDisp.width  / 2;
+      const cqH    = cDisp.height / 2;
 
-      const lEmbed  = await embedSlice(outDoc, sourceDoc, i,             lMapped);
-      const cEmbed  = await embedSlice(outDoc, sourceDoc, i + halfPages, cMapped);
+      // 4 quadrantes em coordenadas de display (y cresce para cima no PDF)
+      const labelSlices = [
+        { x: 0,   y: lqH, w: lqW, h: lqH },
+        { x: lqW, y: lqH, w: lqW, h: lqH },
+        { x: 0,   y: 0,   w: lqW, h: lqH },
+        { x: lqW, y: 0,   w: lqW, h: lqH },
+      ];
+      const checkSlices = [
+        { x: 0,   y: cqH, w: cqW, h: cqH },
+        { x: cqW, y: cqH, w: cqW, h: cqH },
+        { x: 0,   y: 0,   w: cqW, h: cqH },
+        { x: cqW, y: 0,   w: cqW, h: cqH },
+      ];
 
-      if (isExpanded) {
-        // Expandido: etiqueta em A4 inteiro + checklist em A4 inteiro (2 páginas por pedido)
-        const p1 = outDoc.addPage([OUT_W, OUT_H]);
-        drawQuadInZone(p1, lEmbed, lSlice, lMapped, lRot, OUT_W, OUT_H, 0, 0, true);
+      for (let qi = 0; qi < 4; qi += 1) {
+        const lSlice  = labelSlices[qi];
+        const cSlice  = checkSlices[qi];
 
-        const p2 = outDoc.addPage([OUT_W, OUT_H]);
-        drawQuadInZone(p2, cEmbed, cSlice, cMapped, cRot, OUT_W, OUT_H, 0, 0, true);
+        const lMapped = mapSliceToUnrotated(lSlice, lSz.width, lSz.height, lRot);
+        const cMapped = mapSliceToUnrotated(cSlice, cSz.width, cSz.height, cRot);
 
-      } else {
-        // Compacto: etiqueta (60 %) + checklist (40 %) na mesma folha A4
-        const pg = outDoc.addPage([OUT_W, OUT_H]);
+        const lEmbed  = await embedSlice(outDoc, sourceDoc, i,             lMapped);
+        const cEmbed  = await embedSlice(outDoc, sourceDoc, i + halfPages, cMapped);
 
-        drawQuadInZone(pg, lEmbed, lSlice, lMapped, lRot,
-          OUT_W, LABEL_ZONE, 0, CHECK_ZONE, true);
+        if (isExpanded) {
+          const p1 = outDoc.addPage([OUT_W, OUT_H]);
+          drawQuadInZone(p1, lEmbed, lSlice, lMapped, lRot, OUT_W, OUT_H, 0, 0, true);
 
-        drawQuadInZone(pg, cEmbed, cSlice, cMapped, cRot,
-          OUT_W, CHECK_ZONE, 0, 0, true);
+          const p2 = outDoc.addPage([OUT_W, OUT_H]);
+          drawQuadInZone(p2, cEmbed, cSlice, cMapped, cRot, OUT_W, OUT_H, 0, 0, true);
+
+        } else {
+          const pg = outDoc.addPage([OUT_W, OUT_H]);
+
+          drawQuadInZone(pg, lEmbed, lSlice, lMapped, lRot,
+            OUT_W, LABEL_ZONE, 0, CHECK_ZONE, true);
+
+          drawQuadInZone(pg, cEmbed, cSlice, cMapped, cRot,
+            OUT_W, CHECK_ZONE, 0, 0, true);
+        }
+
+        done += 1;
+        if (typeof onProgress === 'function') {
+          onProgress({ phase: 'page', current: done, total: totalItems });
+        }
+        await yieldToUI();
       }
-
-      done += 1;
-      if (typeof onProgress === 'function') {
-        onProgress({ phase: 'page', current: done, total: halfPages });
-      }
-      await yieldToUI();
     }
 
     if (typeof onProgress === 'function') {
@@ -1020,6 +1041,7 @@
             const isExpanded = modeId === 'checklist-expanded';
             const LABEL_ZONE = A4_H * 0.60;
             const CHECK_ZONE = A4_H - LABEL_ZONE;
+            const totalItems = halfPages * 4;
             let done = 0;
 
             const drawInZone = (pg, emb, sl, ms, rot, bW, bH, ox, oy, preferW = false) => {
@@ -1041,28 +1063,39 @@
               const cRot = normalizeRotation(cPage.getRotation()?.angle);
               const lDisp = getDisplaySize(lSz, lRot);
               const cDisp = getDisplaySize(cSz, cRot);
+              const lqW = lDisp.width/2, lqH = lDisp.height/2;
+              const cqW = cDisp.width/2, cqH = cDisp.height/2;
 
-              // Página inteira como slice (1 etiqueta por página)
-              const ls = { x: 0, y: 0, w: lDisp.width, h: lDisp.height };
-              const cs = { x: 0, y: 0, w: cDisp.width, h: cDisp.height };
-              const lm = mapSliceToUnrotated(ls, lSz.width, lSz.height, lRot);
-              const cm = mapSliceToUnrotated(cs, cSz.width, cSz.height, cRot);
-              const lE = await embedSlice(outDoc, srcDoc, i, lm);
-              const cE = await embedSlice(outDoc, srcDoc, i + halfPages, cm);
+              const lSlices = [
+                {x:0,y:lqH,w:lqW,h:lqH},{x:lqW,y:lqH,w:lqW,h:lqH},
+                {x:0,y:0,w:lqW,h:lqH},{x:lqW,y:0,w:lqW,h:lqH},
+              ];
+              const cSlices = [
+                {x:0,y:cqH,w:cqW,h:cqH},{x:cqW,y:cqH,w:cqW,h:cqH},
+                {x:0,y:0,w:cqW,h:cqH},{x:cqW,y:0,w:cqW,h:cqH},
+              ];
 
-              if (isExpanded) {
-                const p1 = outDoc.addPage([A4_W, A4_H]);
-                drawInZone(p1, lE, ls, lm, lRot, A4_W, A4_H, 0, 0, true);
-                const p2 = outDoc.addPage([A4_W, A4_H]);
-                drawInZone(p2, cE, cs, cm, cRot, A4_W, A4_H, 0, 0, true);
-              } else {
-                const pg = outDoc.addPage([A4_W, A4_H]);
-                drawInZone(pg, lE, ls, lm, lRot, A4_W, LABEL_ZONE, 0, CHECK_ZONE, true);
-                drawInZone(pg, cE, cs, cm, cRot, A4_W, CHECK_ZONE, 0, 0, true);
+              for (let qi = 0; qi < 4; qi += 1) {
+                const ls = lSlices[qi], cs = cSlices[qi];
+                const lm = mapSliceToUnrotated(ls, lSz.width, lSz.height, lRot);
+                const cm = mapSliceToUnrotated(cs, cSz.width, cSz.height, cRot);
+                const lE = await embedSlice(outDoc, srcDoc, i, lm);
+                const cE = await embedSlice(outDoc, srcDoc, i + halfPages, cm);
+
+                if (isExpanded) {
+                  const p1 = outDoc.addPage([A4_W, A4_H]);
+                  drawInZone(p1, lE, ls, lm, lRot, A4_W, A4_H, 0, 0, true);
+                  const p2 = outDoc.addPage([A4_W, A4_H]);
+                  drawInZone(p2, cE, cs, cm, cRot, A4_W, A4_H, 0, 0, true);
+                } else {
+                  const pg = outDoc.addPage([A4_W, A4_H]);
+                  drawInZone(pg, lE, ls, lm, lRot, A4_W, LABEL_ZONE, 0, CHECK_ZONE, true);
+                  drawInZone(pg, cE, cs, cm, cRot, A4_W, CHECK_ZONE, 0, 0, true);
+                }
+
+                done += 1;
+                self.postMessage({ type: 'progress', payload: { phase: 'page', current: done, total: totalItems } });
               }
-
-              done += 1;
-              self.postMessage({ type: 'progress', payload: { phase: 'page', current: done, total: halfPages } });
             }
 
           } else {
