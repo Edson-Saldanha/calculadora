@@ -337,11 +337,6 @@
     const OUT_W = A4_WIDTH_PT;   // 595 pt = 210 mm
     const OUT_H = A4_HEIGHT_PT;  // 842 pt = 297 mm
 
-    // Split 50/50: checklist girado -90° preenche exatamente 595pt de largura
-    // em zona de 421pt de altura (scale ≈ 1.413, visual 595×420pt).
-    const LABEL_ZONE = OUT_H / 2;
-    const CHECK_ZONE = OUT_H - LABEL_ZONE;
-
     const totalItems = halfPages * 4;
     let done = 0;
 
@@ -367,6 +362,13 @@
       const cDisp  = getDisplaySize(cSz, cRot);
       const cqW    = cDisp.width  / 2;
       const cqH    = cDisp.height / 2;
+
+      // Split ótimo: escala S que maximiza ambos preenchendo A4 inteiro.
+      // labelVisH = lqH*S, checkVisH (rotated) = cqW*(lqW*S/cqH)
+      // lqH*S + cqW*lqW*S/cqH = OUT_H  →  S = OUT_H / (lqH + cqW*lqW/cqH)
+      const optScale  = OUT_H / (lqH + cqW * lqW / Math.max(1, cqH));
+      const LABEL_ZONE = Math.min(lqH * optScale, OUT_H - 1);
+      const CHECK_ZONE = OUT_H - LABEL_ZONE;
 
       // 4 quadrantes em coordenadas de display (y cresce para cima no PDF)
       const labelSlices = [
@@ -402,9 +404,8 @@
         } else {
           const pg = outDoc.addPage([OUT_W, OUT_H]);
 
-          // Calcula largura real do label para forçar o checklist à mesma largura
-          const lFit     = fitMaxWidth(lSlice.w, lSlice.h, OUT_W, LABEL_ZONE);
-          const labelVisW = lSlice.w * lFit.scale;
+          // labelVisW = lqW * optScale (ambos na mesma largura)
+          const labelVisW = lSlice.w * optScale;
 
           drawQuadInZone(pg, lEmbed, lSlice, lMapped, lRot,
             OUT_W, LABEL_ZONE, 0, CHECK_ZONE, true);
@@ -1067,8 +1068,6 @@
           if (modeId === 'checklist' || modeId === 'checklist-expanded') {
             const halfPages  = Math.floor(pages.length / 2);
             const isExpanded = modeId === 'checklist-expanded';
-            const LABEL_ZONE = A4_H / 2;
-            const CHECK_ZONE = A4_H - LABEL_ZONE;
             const totalItems = halfPages * 4;
             let done = 0;
 
@@ -1110,6 +1109,10 @@
               const lqW = lDisp.width/2, lqH = lDisp.height/2;
               const cqW = cDisp.width/2, cqH = cDisp.height/2;
 
+              const optScale   = A4_H / (lqH + cqW * lqW / Math.max(1, cqH));
+              const LABEL_ZONE = Math.min(lqH * optScale, A4_H - 1);
+              const CHECK_ZONE = A4_H - LABEL_ZONE;
+
               const lSlices = [
                 {x:0,y:lqH,w:lqW,h:lqH},{x:lqW,y:lqH,w:lqW,h:lqH},
                 {x:0,y:0,w:lqW,h:lqH},{x:lqW,y:0,w:lqW,h:lqH},
@@ -1133,9 +1136,8 @@
                   drawInZone(p2, cE, cs, cm, cRot, A4_W, A4_H, 0, 0, true);
                 } else {
                   const pg = outDoc.addPage([A4_W, A4_H]);
-                  const lFitW = fitMaxWidth(ls.w, ls.h, A4_W, LABEL_ZONE);
                   drawInZone(pg, lE, ls, lm, lRot, A4_W, LABEL_ZONE, 0, CHECK_ZONE, true);
-                  drawCheckRotated(pg, cE, cm, cRot, A4_W, CHECK_ZONE, 0, 0, ls.w * lFitW.scale);
+                  drawCheckRotated(pg, cE, cm, cRot, A4_W, CHECK_ZONE, 0, 0, ls.w * optScale);
                 }
 
                 done += 1;
