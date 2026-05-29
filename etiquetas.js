@@ -284,13 +284,14 @@
   // Renderiza um quadrante de uma página com tratamento correto de rotação,
   // dentro de uma zona retangular (boxW × boxH) a partir de (originX, originY).
   // Usa a mesma lógica do modo standard.
-  function drawQuadInZone(outPage, embedded, slice, mappedSlice, rotation, boxW, boxH, originX, originY, preferWidth = false) {
+  // vAlign: 'center' (padrão) | 'bottom' (cola no fundo da zona, sem margem inferior)
+  function drawQuadInZone(outPage, embedded, slice, mappedSlice, rotation, boxW, boxH, originX, originY, preferWidth = false, vAlign = 'center') {
     const { degrees } = getPdfLib();
     const fit = preferWidth
       ? fitMaxWidth(slice.w, slice.h, boxW, boxH)
       : fitInsideBox(slice.w, slice.h, boxW, boxH);
     const x0  = originX + (boxW - fit.width)  / 2;
-    const y0  = originY + (boxH - fit.height) / 2;
+    const y0  = vAlign === 'bottom' ? originY : originY + (boxH - fit.height) / 2;
     const sW  = mappedSlice.w * fit.scale;
     const sH  = mappedSlice.h * fit.scale;
     const pl  = getRotationPlacement(rotation, sW, sH, x0, y0);
@@ -407,8 +408,9 @@
           // labelVisW = lqW * optScale (ambos na mesma largura)
           const labelVisW = lSlice.w * optScale;
 
+          // vAlign='bottom': label cola no limite com o checklist, sem gap
           drawQuadInZone(pg, lEmbed, lSlice, lMapped, lRot,
-            OUT_W, LABEL_ZONE, 0, CHECK_ZONE, true);
+            OUT_W, LABEL_ZONE, 0, CHECK_ZONE, true, 'bottom');
 
           drawChecklistRotated(pg, cEmbed, cMapped, cRot,
             OUT_W, CHECK_ZONE, 0, 0, labelVisW);
@@ -1071,10 +1073,10 @@
             const totalItems = halfPages * 4;
             let done = 0;
 
-            const drawInZone = (pg, emb, sl, ms, rot, bW, bH, ox, oy, preferW = false) => {
+            const drawInZone = (pg, emb, sl, ms, rot, bW, bH, ox, oy, preferW = false, vAlign = 'center') => {
               const fit = preferW ? fitMaxWidth(sl.w, sl.h, bW, bH) : fitInsideBox(sl.w, sl.h, bW, bH);
               const x0  = ox + (bW - fit.width)  / 2;
-              const y0  = oy + (bH - fit.height) / 2;
+              const y0  = vAlign === 'bottom' ? oy : oy + (bH - fit.height) / 2;
               const sW  = ms.w * fit.scale, sH = ms.h * fit.scale;
               const pl  = getRotationPlacement(rot, sW, sH, x0, y0);
               pg.drawPage(emb, { x: pl.x, y: pl.y, xScale: fit.scale, yScale: fit.scale,
@@ -1136,7 +1138,7 @@
                   drawInZone(p2, cE, cs, cm, cRot, A4_W, A4_H, 0, 0, true);
                 } else {
                   const pg = outDoc.addPage([A4_W, A4_H]);
-                  drawInZone(pg, lE, ls, lm, lRot, A4_W, LABEL_ZONE, 0, CHECK_ZONE, true);
+                  drawInZone(pg, lE, ls, lm, lRot, A4_W, LABEL_ZONE, 0, CHECK_ZONE, true, 'bottom');
                   drawCheckRotated(pg, cE, cm, cRot, A4_W, CHECK_ZONE, 0, 0, ls.w * optScale);
                 }
 
