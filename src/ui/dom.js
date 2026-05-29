@@ -1,0 +1,20 @@
+﻿export const dom = {
+  modeSelect: document.getElementById('modeSelect'),
+  fileInput: document.getElementById('fileInput'),
+  dropZone: document.getElementById('dropZone'),
+  btnPick: document.getElementById('btnPick'),
+  fileName: document.getElementById('fileName'),
+  fileSize: document.getElementById('fileSize'),
+  btnGenerate: document.getElementById('btnGenerate'),
+  btnDownload: document.getElementById('btnDownload'),
+  statusText: document.getElementById('statusText'),
+  progressText: document.getElementById('progressText'),
+  progressFill: document.getElementById('progressFill'),
+  elapsedTime: document.getElementById('elapsedTime'),
+  summary: document.getElementById('summary'),
+  summaryMode: document.getElementById('summaryMode'),
+  summaryInput: document.getElementById('summaryInput'),
+  summaryOutput: document.getElementById('summaryOutput'),
+  toasts: document.getElementById('toastStack'),
+};
+
