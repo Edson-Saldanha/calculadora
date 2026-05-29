@@ -254,32 +254,40 @@
 
   // ─── Checklist rendering ────────────────────────────────────────────────────
   //
-  // Compacto  (checklist): etiqueta nos 65% superiores + checklist nos 35%
-  //           inferiores do A4, rotacionado -90° para preencher ~90% da largura.
+  // Geometria: quadrante ≈ 297.5×421 pt tem razão de aspecto idêntica ao A4
+  // (≈ 0.707), portanto escala 2× preenche A4 inteiro — etiqueta e checklist
+  // nunca cabem ambos em largura total na mesma página sem recortar.
   //
-  // Expandido (checklist-expanded): duas páginas A4 por pedido.
-  //           Página 1 = etiqueta em escala 2× (preenche A4 inteiro).
-  //           Página 2 = checklist em escala 2× (preenche A4 inteiro).
-  //           Ambas sem margens laterais, aproveitamento máximo.
+  // Compacto (checklist):
+  //   • Etiqueta: 70 % da altura A4, fitInsideBox → ~70 % da largura.
+  //   • Checklist: apenas o topo CHECKLIST_CONTENT_FRAC do quadrante fonte
+  //     (onde fica o conteúdo real — produtos + cabeçalho), escalado para
+  //     preencher a largura A4 → ~86 % da largura, sem rotação.
+  //   Elimina o espaço em branco interno do checklist.
   //
-  // Em ambos os modos, a razão quadrante ≈ 297.5×421 pt (A4/2) tem o mesmo
-  // aspecto que A4 (≈ 0.707), portanto escala 2× preenche A4 exatamente.
+  // Expandido (checklist-expanded):
+  //   • Duas páginas A4 por pedido, escala 2× cada.
+  //   • Etiqueta e checklist preenchem A4 inteiro individualmente.
+
+  // Fração do quadrante checklist com conteúdo real (cabeçalho + produtos).
+  // Aumente se o checklist tiver muitos produtos; reduza para maior escala.
+  const CHECKLIST_CONTENT_FRAC = 0.35;
 
   async function renderOutputPdfChecklistCombined({ sourceDoc, modeId, onProgress, shouldCancel }) {
-    const { PDFDocument, degrees } = getPdfLib();
-    const outDoc = await PDFDocument.create();
-    const pages   = sourceDoc.getPages();
+    const { PDFDocument } = getPdfLib();
+    const outDoc    = await PDFDocument.create();
+    const pages     = sourceDoc.getPages();
     const halfPages = Math.floor(pages.length / 2);
     const isExpanded = modeId === 'checklist-expanded';
 
-    const OUT_W = A4_WIDTH_PT;   // 595 pt = 210 mm
-    const OUT_H = A4_HEIGHT_PT;  // 842 pt = 297 mm
+    const OUT_W = A4_WIDTH_PT;   // 595 pt  = 210 mm
+    const OUT_H = A4_HEIGHT_PT;  // 842 pt  = 297 mm
 
-    // Compacto: 65 % label / 35 % checklist
-    const LABEL_ZONE = OUT_H * 0.65;  // ~547 pt
-    const CHECK_ZONE = OUT_H - LABEL_ZONE; // ~295 pt
+    // Compacto: 70 % etiqueta / 30 % checklist (conteúdo cropado)
+    const LABEL_ZONE = OUT_H * 0.70;       // ≈ 589 pt
+    const CHECK_ZONE = OUT_H - LABEL_ZONE; // ≈ 253 pt
 
-    const totalItems = halfPages * (isExpanded ? 4 : 4);
+    const totalItems = halfPages * 4;
     let done = 0;
 
     for (let i = 0; i < halfPages; i += 1) {
@@ -301,12 +309,10 @@
       ];
 
       for (const q of quads) {
-        const labelEmbed = await embedSlice(outDoc, sourceDoc, i,             q);
-        const checkEmbed = await embedSlice(outDoc, sourceDoc, i + halfPages, q);
+        const labelEmbed = await embedSlice(outDoc, sourceDoc, i, q);
 
         if (isExpanded) {
           // ── Expandido: página 1 = etiqueta ─────────────────────────────
-          // Quadrante tem mesmo aspecto que A4 → escala 2× preenche exato.
           const p1   = outDoc.addPage([OUT_W, OUT_H]);
           const lFit = fitInsideBox(q.w, q.h, OUT_W, OUT_H);
           p1.drawPage(labelEmbed, {
@@ -316,10 +322,11 @@
             yScale: lFit.scale,
           });
 
-          // ── Expandido: página 2 = checklist ────────────────────────────
+          // ── Expandido: página 2 = checklist (quadrante inteiro) ─────────
+          const checkFull  = await embedSlice(outDoc, sourceDoc, i + halfPages, q);
           const p2   = outDoc.addPage([OUT_W, OUT_H]);
           const cFit = fitInsideBox(q.w, q.h, OUT_W, OUT_H);
-          p2.drawPage(checkEmbed, {
+          p2.drawPage(checkFull, {
             x: (OUT_W - cFit.width)  / 2,
             y: (OUT_H - cFit.height) / 2,
             xScale: cFit.scale,
@@ -327,10 +334,10 @@
           });
 
         } else {
-          // ── Compacto: tudo em uma A4 ────────────────────────────────────
+          // ── Compacto: etiqueta + checklist em uma A4 ────────────────────
           const pg = outDoc.addPage([OUT_W, OUT_H]);
 
-          // Etiqueta: zona superior (65 %), centralizada
+          // Etiqueta: zona superior (70 %), centralizada
           const lFit = fitInsideBox(q.w, q.h, OUT_W, LABEL_ZONE);
           pg.drawPage(labelEmbed, {
             x: (OUT_W - lFit.width)  / 2,
@@ -339,20 +346,19 @@
             yScale: lFit.scale,
           });
 
-          // Checklist: zona inferior (35 %), rotacionado -90° CW
-          // Após -90°: dimensão visual = q.h × q.w
-          // Escala máxima que caiba em (OUT_W × CHECK_ZONE) após rotação
-          const cScale   = Math.min(OUT_W / Math.max(1, q.h), CHECK_ZONE / Math.max(1, q.w));
-          const cVisW    = q.h * cScale; // largura visual = q.h × escala  (≈ 90-100 % de OUT_W)
-          const cVisH    = q.w * cScale; // altura visual  = q.w × escala  (≈ CHECK_ZONE)
-          const cX       = (OUT_W - cVisW) / 2;
-          const cY       = (CHECK_ZONE - cVisH) / 2;
-          pg.drawPage(checkEmbed, {
-            x: cX,
-            y: cY + cVisH,
-            xScale: cScale,
-            yScale: cScale,
-            rotate: degrees(-90),
+          // Checklist: zona inferior (30 %).
+          // Cropado ao topo CHECKLIST_CONTENT_FRAC do quadrante fonte para
+          // eliminar o espaço em branco interno e maximizar a escala.
+          // Em PDF (y sobe de baixo), o topo do quadrante = y mais alto.
+          const cropH  = q.h * CHECKLIST_CONTENT_FRAC;
+          const cropQ  = { x: q.x, y: q.y + q.h - cropH, w: q.w, h: cropH };
+          const checkCrop = await embedSlice(outDoc, sourceDoc, i + halfPages, cropQ);
+          const cFit   = fitInsideBox(cropQ.w, cropQ.h, OUT_W, CHECK_ZONE);
+          pg.drawPage(checkCrop, {
+            x: (OUT_W - cFit.width)  / 2,
+            y: (CHECK_ZONE - cFit.height) / 2,
+            xScale: cFit.scale,
+            yScale: cFit.scale,
           });
         }
 
@@ -1003,7 +1009,8 @@
           if (modeId === 'checklist' || modeId === 'checklist-expanded') {
             const halfPages  = Math.floor(pages.length / 2);
             const isExpanded = modeId === 'checklist-expanded';
-            const LABEL_ZONE = A4_H * 0.65;
+            const CHECKLIST_CONTENT_FRAC = ${CHECKLIST_CONTENT_FRAC};
+            const LABEL_ZONE = A4_H * 0.70;
             const CHECK_ZONE = A4_H - LABEL_ZONE;
             let done = 0;
             const totalItems = halfPages * 4;
@@ -1020,26 +1027,27 @@
               ];
 
               for (const q of quads) {
-                const lE = await embedSlice(outDoc, srcDoc, i,            q);
-                const cE = await embedSlice(outDoc, srcDoc, i + halfPages, q);
+                const lE = await embedSlice(outDoc, srcDoc, i, q);
 
                 if (isExpanded) {
                   const p1 = outDoc.addPage([A4_W, A4_H]);
                   const lF = fitInsideBox(q.w, q.h, A4_W, A4_H);
                   p1.drawPage(lE, { x: (A4_W - lF.width) / 2, y: (A4_H - lF.height) / 2, xScale: lF.scale, yScale: lF.scale });
 
+                  const cFull = await embedSlice(outDoc, srcDoc, i + halfPages, q);
                   const p2 = outDoc.addPage([A4_W, A4_H]);
                   const cF = fitInsideBox(q.w, q.h, A4_W, A4_H);
-                  p2.drawPage(cE, { x: (A4_W - cF.width) / 2, y: (A4_H - cF.height) / 2, xScale: cF.scale, yScale: cF.scale });
+                  p2.drawPage(cFull, { x: (A4_W - cF.width) / 2, y: (A4_H - cF.height) / 2, xScale: cF.scale, yScale: cF.scale });
                 } else {
-                  const pg  = outDoc.addPage([A4_W, A4_H]);
-                  const lF  = fitInsideBox(q.w, q.h, A4_W, LABEL_ZONE);
+                  const pg = outDoc.addPage([A4_W, A4_H]);
+                  const lF = fitInsideBox(q.w, q.h, A4_W, LABEL_ZONE);
                   pg.drawPage(lE, { x: (A4_W - lF.width) / 2, y: CHECK_ZONE + (LABEL_ZONE - lF.height) / 2, xScale: lF.scale, yScale: lF.scale });
 
-                  const cSc  = Math.min(A4_W / Math.max(1, q.h), CHECK_ZONE / Math.max(1, q.w));
-                  const cVW  = q.h * cSc;
-                  const cVH  = q.w * cSc;
-                  pg.drawPage(cE, { x: (A4_W - cVW) / 2, y: (CHECK_ZONE - cVH) / 2 + cVH, xScale: cSc, yScale: cSc, rotate: degrees(-90) });
+                  const cropH  = q.h * CHECKLIST_CONTENT_FRAC;
+                  const cropQ  = { x: q.x, y: q.y + q.h - cropH, w: q.w, h: cropH };
+                  const cCrop  = await embedSlice(outDoc, srcDoc, i + halfPages, cropQ);
+                  const cF2    = fitInsideBox(cropQ.w, cropQ.h, A4_W, CHECK_ZONE);
+                  pg.drawPage(cCrop, { x: (A4_W - cF2.width) / 2, y: (CHECK_ZONE - cF2.height) / 2, xScale: cF2.scale, yScale: cF2.scale });
                 }
 
                 done += 1;
