@@ -16,6 +16,8 @@
     { id: 'standard', label: 'Etiqueta padrão', perPage: 4 },
   ];
 
+  const CHECKLIST_LABEL_RATIO = 0.57;
+
   const DEFAULT_MODE_ID = MODES[0].id;
 
   const ERROR_MESSAGES = {
@@ -266,7 +268,78 @@
     });
   }
 
+  async function renderOutputPdfChecklistCombined({ sourceDoc, onProgress, shouldCancel }) {
+    const { PDFDocument } = getPdfLib();
+    const outDoc = await PDFDocument.create();
+    const pages = sourceDoc.getPages();
+    const halfPages = Math.floor(pages.length / 2);
+
+    const labelAreaH = LABEL_HEIGHT_PT * CHECKLIST_LABEL_RATIO;
+    const checkAreaH = LABEL_HEIGHT_PT * (1 - CHECKLIST_LABEL_RATIO);
+    const totalItems = halfPages * 4;
+    let done = 0;
+
+    for (let i = 0; i < halfPages; i += 1) {
+      if (typeof shouldCancel === 'function' && shouldCancel()) {
+        const error = new Error('cancelled');
+        error.code = 'cancelled';
+        throw error;
+      }
+
+      const labelPage = pages[i];
+      const { width, height } = labelPage.getSize();
+      const halfW = width / 2;
+      const halfH = height / 2;
+
+      const quadrants = [
+        { x: 0, y: halfH, w: halfW, h: halfH },
+        { x: halfW, y: halfH, w: halfW, h: halfH },
+        { x: 0, y: 0, w: halfW, h: halfH },
+        { x: halfW, y: 0, w: halfW, h: halfH },
+      ];
+
+      for (const quad of quadrants) {
+        const labelEmbed = await embedSlice(outDoc, sourceDoc, i, quad);
+        const checkEmbed = await embedSlice(outDoc, sourceDoc, i + halfPages, quad);
+        const outPage = outDoc.addPage(OUTPUT_PAGE);
+
+        const labelFit = fitInsideBox(quad.w, quad.h, LABEL_WIDTH_PT, labelAreaH);
+        outPage.drawPage(labelEmbed, {
+          x: (LABEL_WIDTH_PT - labelFit.width) / 2,
+          y: checkAreaH + (labelAreaH - labelFit.height) / 2,
+          xScale: labelFit.scale,
+          yScale: labelFit.scale,
+        });
+
+        const checkFit = fitInsideBox(quad.w, quad.h, LABEL_WIDTH_PT, checkAreaH);
+        outPage.drawPage(checkEmbed, {
+          x: (LABEL_WIDTH_PT - checkFit.width) / 2,
+          y: (checkAreaH - checkFit.height) / 2,
+          xScale: checkFit.scale,
+          yScale: checkFit.scale,
+        });
+
+        done += 1;
+        if (typeof onProgress === 'function') {
+          onProgress({ phase: 'page', current: done, total: totalItems });
+        }
+        await yieldToUI();
+      }
+    }
+
+    if (typeof onProgress === 'function') {
+      onProgress({ phase: 'finalize' });
+    }
+
+    const pdfBytes = await outDoc.save();
+    return { pdfBytes, pageCount: outDoc.getPageCount() };
+  }
+
   async function renderOutputPdf({ sourceDoc, modeId, onProgress, shouldCancel }) {
+    if (modeId === 'checklist') {
+      return renderOutputPdfChecklistCombined({ sourceDoc, onProgress, shouldCancel });
+    }
+
     const { PDFDocument, degrees } = getPdfLib();
     const outDoc = await PDFDocument.create();
     const pages = sourceDoc.getPages();
@@ -620,7 +693,7 @@
     if (dom.modeSelect) dom.modeSelect.value = mode.id;
   }
 
-  function guessModeFromMeta(fileName, size) {
+  function guessModeFromMeta(fileName, size, pageCount) {
     const name = String(fileName || '').toLowerCase();
     if (name.includes('checklist') || name.includes('check') || name.includes('lista')) {
       return { id: 'checklist', reason: 'nome do arquivo sugere checklist' };
@@ -631,7 +704,13 @@
     const near = (value, target) => Math.abs(value - target) <= 26;
     const a4W = 595;
     const a4H = 842;
-    if ((near(w, a4W) && near(h, a4H)) || (near(w, a4H) && near(h, a4W))) {
+    const isA4 = (near(w, a4W) && near(h, a4H)) || (near(w, a4H) && near(h, a4W));
+
+    if (isA4 && pageCount >= 2 && pageCount % 2 === 0) {
+      return { id: 'checklist', reason: 'PDF A4 com número par de páginas — etiquetas + checklists detectados' };
+    }
+
+    if (isA4) {
       return { id: 'standard', reason: 'tamanho A4 detectado' };
     }
 
@@ -646,7 +725,7 @@
       const page = pdfDoc.getPages()[0];
       const rotation = normalizeRotation(page.getRotation()?.angle);
       const displaySize = getDisplaySize(sizes[0] || page.getSize(), rotation);
-      const suggestion = guessModeFromMeta(file.name, displaySize);
+      const suggestion = guessModeFromMeta(file.name, displaySize, pdfDoc.getPageCount());
       state.suggestedModeId = suggestion.id;
       const mode = getModeById(suggestion.id);
       setModeHint(`Sugestão: <strong>${mode.label}</strong> — ${suggestion.reason}. Se estiver diferente, ajuste o modo.`);
@@ -834,6 +913,7 @@
       const MM_TO_PT = ${MM_TO_PT};
       const LABEL_WIDTH_PT = ${LABEL_WIDTH_PT};
       const LABEL_HEIGHT_PT = ${LABEL_HEIGHT_PT};
+      const CHECKLIST_LABEL_RATIO = ${CHECKLIST_LABEL_RATIO};
 
       const getSlicesForPage = (size, modeId) => {
         const width = Number(size?.width) || 0;
@@ -962,38 +1042,90 @@
 
           const outDoc = await PDFDocument.create();
 
-          for (let pageIndex = 0; pageIndex < pages.length; pageIndex += 1) {
-            if (cancelled) {
-              self.postMessage({ type: 'cancelled' });
-              return;
+          if (modeId === 'checklist') {
+            const halfPages = Math.floor(pages.length / 2);
+            const labelAreaH = LABEL_HEIGHT_PT * CHECKLIST_LABEL_RATIO;
+            const checkAreaH = LABEL_HEIGHT_PT * (1 - CHECKLIST_LABEL_RATIO);
+            const totalItems = halfPages * 4;
+            let done = 0;
+
+            for (let i = 0; i < halfPages; i += 1) {
+              if (cancelled) {
+                self.postMessage({ type: 'cancelled' });
+                return;
+              }
+
+              const labelPage = pages[i];
+              const { width, height } = labelPage.getSize();
+              const halfW = width / 2;
+              const halfH = height / 2;
+
+              const quadrants = [
+                { x: 0, y: halfH, w: halfW, h: halfH },
+                { x: halfW, y: halfH, w: halfW, h: halfH },
+                { x: 0, y: 0, w: halfW, h: halfH },
+                { x: halfW, y: 0, w: halfW, h: halfH },
+              ];
+
+              for (const quad of quadrants) {
+                const labelEmbed = await embedSlice(outDoc, sourceDoc, i, quad);
+                const checkEmbed = await embedSlice(outDoc, sourceDoc, i + halfPages, quad);
+                const outPage = outDoc.addPage([LABEL_WIDTH_PT, LABEL_HEIGHT_PT]);
+
+                const labelFit = fitInsideBox(quad.w, quad.h, LABEL_WIDTH_PT, labelAreaH);
+                outPage.drawPage(labelEmbed, {
+                  x: (LABEL_WIDTH_PT - labelFit.width) / 2,
+                  y: checkAreaH + (labelAreaH - labelFit.height) / 2,
+                  xScale: labelFit.scale,
+                  yScale: labelFit.scale,
+                });
+
+                const checkFit = fitInsideBox(quad.w, quad.h, LABEL_WIDTH_PT, checkAreaH);
+                outPage.drawPage(checkEmbed, {
+                  x: (LABEL_WIDTH_PT - checkFit.width) / 2,
+                  y: (checkAreaH - checkFit.height) / 2,
+                  xScale: checkFit.scale,
+                  yScale: checkFit.scale,
+                });
+
+                done += 1;
+                self.postMessage({ type: 'progress', payload: { phase: 'page', current: done, total: totalItems } });
+              }
             }
+          } else {
+            for (let pageIndex = 0; pageIndex < pages.length; pageIndex += 1) {
+              if (cancelled) {
+                self.postMessage({ type: 'cancelled' });
+                return;
+              }
 
-            const page = pages[pageIndex];
-            const size = page.getSize();
-            const rotation = normalizeRotation(page.getRotation()?.angle);
-            const displaySize = getDisplaySize(size, rotation);
-            const slices = getSlicesForPage(displaySize, modeId);
+              const page = pages[pageIndex];
+              const size = page.getSize();
+              const rotation = normalizeRotation(page.getRotation()?.angle);
+              const displaySize = getDisplaySize(size, rotation);
+              const slices = getSlicesForPage(displaySize, modeId);
 
-            for (const slice of slices) {
-              const mappedSlice = mapSliceToUnrotated(slice, size.width, size.height, rotation);
-              const embedded = await embedSlice(outDoc, sourceDoc, pageIndex, mappedSlice);
-              const outPage = outDoc.addPage([LABEL_WIDTH_PT, LABEL_HEIGHT_PT]);
-              const fit = fitInsideBox(slice.w, slice.h, LABEL_WIDTH_PT, LABEL_HEIGHT_PT);
-              const x0 = (LABEL_WIDTH_PT - fit.width) / 2;
-              const y0 = (LABEL_HEIGHT_PT - fit.height) / 2;
-              const scaledW = mappedSlice.w * fit.scale;
-              const scaledH = mappedSlice.h * fit.scale;
-              const placement = getRotationPlacement(rotation, scaledW, scaledH, x0, y0);
-              outPage.drawPage(embedded, {
-                x: placement.x,
-                y: placement.y,
-                xScale: fit.scale,
-                yScale: fit.scale,
-                rotate: rotation ? degrees(rotation) : undefined,
-              });
+              for (const slice of slices) {
+                const mappedSlice = mapSliceToUnrotated(slice, size.width, size.height, rotation);
+                const embedded = await embedSlice(outDoc, sourceDoc, pageIndex, mappedSlice);
+                const outPage = outDoc.addPage([LABEL_WIDTH_PT, LABEL_HEIGHT_PT]);
+                const fit = fitInsideBox(slice.w, slice.h, LABEL_WIDTH_PT, LABEL_HEIGHT_PT);
+                const x0 = (LABEL_WIDTH_PT - fit.width) / 2;
+                const y0 = (LABEL_HEIGHT_PT - fit.height) / 2;
+                const scaledW = mappedSlice.w * fit.scale;
+                const scaledH = mappedSlice.h * fit.scale;
+                const placement = getRotationPlacement(rotation, scaledW, scaledH, x0, y0);
+                outPage.drawPage(embedded, {
+                  x: placement.x,
+                  y: placement.y,
+                  xScale: fit.scale,
+                  yScale: fit.scale,
+                  rotate: rotation ? degrees(rotation) : undefined,
+                });
+              }
+
+              self.postMessage({ type: 'progress', payload: { phase: 'page', current: pageIndex + 1, total: pages.length } });
             }
-
-            self.postMessage({ type: 'progress', payload: { phase: 'page', current: pageIndex + 1, total: pages.length } });
           }
 
           self.postMessage({ type: 'progress', payload: { phase: 'finalize' } });
