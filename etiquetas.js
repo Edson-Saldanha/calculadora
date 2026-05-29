@@ -311,7 +311,7 @@
           yScale: labelFit.scale,
         });
 
-        // Checklist rotacionado 90° (CCW) para leitura horizontal
+        // Checklist rotacionado -90° (CW) para leitura horizontal
         // Após rotação, dimensão visual = quad.h × quad.w
         const checkScale = Math.min(
           LABEL_WIDTH_PT / Math.max(1, quad.h),
@@ -322,11 +322,11 @@
         const cx0 = (LABEL_WIDTH_PT - scaledH) / 2;
         const cy0 = (checkAreaH - scaledW) / 2;
         outPage.drawPage(checkEmbed, {
-          x: cx0 + scaledH,
-          y: cy0,
+          x: cx0,
+          y: cy0 + scaledW,
           xScale: checkScale,
           yScale: checkScale,
-          rotate: degrees(90),
+          rotate: degrees(-90),
         });
 
         done += 1;
@@ -1099,11 +1099,11 @@
                 const cx0 = (LABEL_WIDTH_PT - scaledH) / 2;
                 const cy0 = (checkAreaH - scaledW) / 2;
                 outPage.drawPage(checkEmbed, {
-                  x: cx0 + scaledH,
-                  y: cy0,
+                  x: cx0,
+                  y: cy0 + scaledW,
                   xScale: checkScale,
                   yScale: checkScale,
-                  rotate: degrees(90),
+                  rotate: degrees(-90),
                 });
 
                 done += 1;
