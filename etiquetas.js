@@ -16,6 +16,8 @@
     { id: 'standard', label: 'Etiqueta padrão', perPage: 4 },
   ];
 
+  const A4_WIDTH_PT  = 595;
+  const A4_HEIGHT_PT = 842;
   const CHECKLIST_LABEL_RATIO = 0.57;
 
   const DEFAULT_MODE_ID = MODES[0].id;
@@ -274,8 +276,12 @@
     const pages = sourceDoc.getPages();
     const halfPages = Math.floor(pages.length / 2);
 
-    const labelAreaH = LABEL_HEIGHT_PT * CHECKLIST_LABEL_RATIO;
-    const checkAreaH = LABEL_HEIGHT_PT * (1 - CHECKLIST_LABEL_RATIO);
+    // Página de saída: A4 dividida ao meio
+    // Metade superior = etiqueta, metade inferior = checklist (rotacionado -90°)
+    const OUT_W = A4_WIDTH_PT;
+    const OUT_H = A4_HEIGHT_PT;
+    const halfH = OUT_H / 2; // ~421pt = ~148.5mm por metade
+
     const totalItems = halfPages * 4;
     let done = 0;
 
@@ -288,47 +294,42 @@
 
       const labelPage = pages[i];
       const { width, height } = labelPage.getSize();
-      const halfW = width / 2;
-      const halfH = height / 2;
+      const qW = width / 2;
+      const qH = height / 2;
 
       const quadrants = [
-        { x: 0, y: halfH, w: halfW, h: halfH },
-        { x: halfW, y: halfH, w: halfW, h: halfH },
-        { x: 0, y: 0, w: halfW, h: halfH },
-        { x: halfW, y: 0, w: halfW, h: halfH },
+        { x: 0,   y: qH, w: qW, h: qH },
+        { x: qW,  y: qH, w: qW, h: qH },
+        { x: 0,   y: 0,  w: qW, h: qH },
+        { x: qW,  y: 0,  w: qW, h: qH },
       ];
 
       for (const quad of quadrants) {
-        const labelEmbed = await embedSlice(outDoc, sourceDoc, i, quad);
+        const labelEmbed = await embedSlice(outDoc, sourceDoc, i,            quad);
         const checkEmbed = await embedSlice(outDoc, sourceDoc, i + halfPages, quad);
-        const outPage = outDoc.addPage(OUTPUT_PAGE);
+        const outPage = outDoc.addPage([OUT_W, OUT_H]);
 
-        // Escala para preencher exatamente 100mm de largura
-        const labelScale = LABEL_WIDTH_PT / Math.max(1, quad.w);
-        const labelDrawH = quad.h * labelScale;
-        const labelY = checkAreaH + (labelAreaH - labelDrawH) / 2;
+        // ── Metade superior: etiqueta centralizada ──────────────────────
+        const lFit = fitInsideBox(quad.w, quad.h, OUT_W, halfH);
         outPage.drawPage(labelEmbed, {
-          x: 0,
-          y: labelY,
-          xScale: labelScale,
-          yScale: labelScale,
+          x: (OUT_W - lFit.width) / 2,
+          y: halfH + (halfH - lFit.height) / 2,
+          xScale: lFit.scale,
+          yScale: lFit.scale,
         });
 
-        // Checklist rotacionado -90° (CW) para leitura horizontal
-        // Após rotação, dimensão visual = quad.h × quad.w
-        const checkScale = Math.min(
-          LABEL_WIDTH_PT / Math.max(1, quad.h),
-          checkAreaH / Math.max(1, quad.w)
-        );
-        const scaledW = quad.w * checkScale;
-        const scaledH = quad.h * checkScale;
-        const cx0 = (LABEL_WIDTH_PT - scaledH) / 2;
-        const cy0 = (checkAreaH - scaledW) / 2;
+        // ── Metade inferior: checklist rotacionado -90° (CW) ────────────
+        // Após -90°, dimensão visual = quad.h × quad.w
+        const cScale = Math.min(OUT_W / Math.max(1, quad.h), halfH / Math.max(1, quad.w));
+        const cScaledW = quad.w * cScale;
+        const cScaledH = quad.h * cScale;
+        const cx0 = (OUT_W - cScaledH) / 2;
+        const cy0 = (halfH  - cScaledW) / 2;
         outPage.drawPage(checkEmbed, {
           x: cx0,
-          y: cy0 + scaledW,
-          xScale: checkScale,
-          yScale: checkScale,
+          y: cy0 + cScaledW,
+          xScale: cScale,
+          yScale: cScale,
           rotate: degrees(-90),
         });
 
@@ -1057,8 +1058,9 @@
 
           if (modeId === 'checklist') {
             const halfPages = Math.floor(pages.length / 2);
-            const labelAreaH = LABEL_HEIGHT_PT * CHECKLIST_LABEL_RATIO;
-            const checkAreaH = LABEL_HEIGHT_PT * (1 - CHECKLIST_LABEL_RATIO);
+            const OUT_W = ${A4_WIDTH_PT};
+            const OUT_H = ${A4_HEIGHT_PT};
+            const halfH = OUT_H / 2;
             const totalItems = halfPages * 4;
             let done = 0;
 
@@ -1070,44 +1072,39 @@
 
               const labelPage = pages[i];
               const { width, height } = labelPage.getSize();
-              const halfW = width / 2;
-              const halfH = height / 2;
+              const qW = width / 2;
+              const qH = height / 2;
 
               const quadrants = [
-                { x: 0, y: halfH, w: halfW, h: halfH },
-                { x: halfW, y: halfH, w: halfW, h: halfH },
-                { x: 0, y: 0, w: halfW, h: halfH },
-                { x: halfW, y: 0, w: halfW, h: halfH },
+                { x: 0,  y: qH, w: qW, h: qH },
+                { x: qW, y: qH, w: qW, h: qH },
+                { x: 0,  y: 0,  w: qW, h: qH },
+                { x: qW, y: 0,  w: qW, h: qH },
               ];
 
               for (const quad of quadrants) {
-                const labelEmbed = await embedSlice(outDoc, sourceDoc, i, quad);
+                const labelEmbed = await embedSlice(outDoc, sourceDoc, i,             quad);
                 const checkEmbed = await embedSlice(outDoc, sourceDoc, i + halfPages, quad);
-                const outPage = outDoc.addPage([LABEL_WIDTH_PT, LABEL_HEIGHT_PT]);
+                const outPage = outDoc.addPage([OUT_W, OUT_H]);
 
-                const labelScale = LABEL_WIDTH_PT / Math.max(1, quad.w);
-                const labelDrawH = quad.h * labelScale;
-                const labelY = checkAreaH + (labelAreaH - labelDrawH) / 2;
+                const lScale = Math.min(OUT_W / Math.max(1, quad.w), halfH / Math.max(1, quad.h));
                 outPage.drawPage(labelEmbed, {
-                  x: 0,
-                  y: labelY,
-                  xScale: labelScale,
-                  yScale: labelScale,
+                  x: (OUT_W - quad.w * lScale) / 2,
+                  y: halfH + (halfH - quad.h * lScale) / 2,
+                  xScale: lScale,
+                  yScale: lScale,
                 });
 
-                const checkScale = Math.min(
-                  LABEL_WIDTH_PT / Math.max(1, quad.h),
-                  checkAreaH / Math.max(1, quad.w)
-                );
-                const scaledW = quad.w * checkScale;
-                const scaledH = quad.h * checkScale;
-                const cx0 = (LABEL_WIDTH_PT - scaledH) / 2;
-                const cy0 = (checkAreaH - scaledW) / 2;
+                const cScale = Math.min(OUT_W / Math.max(1, quad.h), halfH / Math.max(1, quad.w));
+                const cScaledW = quad.w * cScale;
+                const cScaledH = quad.h * cScale;
+                const cx0 = (OUT_W - cScaledH) / 2;
+                const cy0 = (halfH  - cScaledW) / 2;
                 outPage.drawPage(checkEmbed, {
                   x: cx0,
-                  y: cy0 + scaledW,
-                  xScale: checkScale,
-                  yScale: checkScale,
+                  y: cy0 + cScaledW,
+                  xScale: cScale,
+                  yScale: cScale,
                   rotate: degrees(-90),
                 });
 
