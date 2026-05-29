@@ -314,7 +314,8 @@
       ? Math.min(targetWidth / Math.max(1, visW), boxH / Math.max(1, visH))
       : fitMaxWidth(visW, visH, boxW, boxH).scale;
     const x0   = originX + (boxW - visW * scale) / 2;
-    const y0   = originY + (boxH - visH * scale) / 2;
+    // Alinha ao topo da zona (colado embaixo da etiqueta), sem espaço vazio acima
+    const y0   = originY + (boxH - visH * scale);
     const sW   = eW * scale, sH = eH * scale;
     const pl   = getRotationPlacement(totalRot, sW, sH, x0, y0);
     outPage.drawPage(embedded, {
@@ -1090,7 +1091,7 @@
                 ? Math.min(targetWidth / Math.max(1, visW), bH / Math.max(1, visH))
                 : fitMaxWidth(visW, visH, bW, bH).scale;
               const x0   = ox + (bW - visW * scale) / 2;
-              const y0   = oy + (bH - visH * scale) / 2;
+              const y0   = oy + (bH - visH * scale);
               const sW   = eW * scale, sH = eH * scale;
               const pl   = getRotationPlacement(totalRot, sW, sH, x0, y0);
               pg.drawPage(emb, { x: pl.x, y: pl.y, xScale: scale, yScale: scale,
