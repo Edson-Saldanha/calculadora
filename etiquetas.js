@@ -335,8 +335,11 @@
     const halfPages = Math.floor(pages.length / 2);
     const isExpanded = modeId === 'checklist-expanded';
 
-    const OUT_W = A4_WIDTH_PT;   // 595 pt = 210 mm
-    const OUT_H = A4_HEIGHT_PT;  // 842 pt = 297 mm
+    // Compacto: A4 paisagem (842×595pt). Etiqueta à esquerda, checklist à direita.
+    // Cada metade = 421×595pt. quadrante ~297.5×421pt a scale≈1.413 preenche exatamente.
+    const OUT_W = A4_HEIGHT_PT;  // 842 pt (largura paisagem)
+    const OUT_H = A4_WIDTH_PT;   // 595 pt (altura paisagem)
+    const HALF  = OUT_W / 2;     // 421 pt — zona de cada elemento
 
     const totalItems = halfPages * 4;
     let done = 0;
@@ -364,14 +367,7 @@
       const cqW    = cDisp.width  / 2;
       const cqH    = cDisp.height / 2;
 
-      // Split ótimo: escala S que maximiza ambos preenchendo A4 inteiro.
-      // labelVisH = lqH*S, checkVisH (rotated) = cqW*(lqW*S/cqH)
-      // lqH*S + cqW*lqW*S/cqH = OUT_H  →  S = OUT_H / (lqH + cqW*lqW/cqH)
-      const optScale  = OUT_H / (lqH + cqW * lqW / Math.max(1, cqH));
-      const LABEL_ZONE = Math.min(lqH * optScale, OUT_H - 1);
-      const CHECK_ZONE = OUT_H - LABEL_ZONE;
-
-      // 4 quadrantes em coordenadas de display (y cresce para cima no PDF)
+      // 4 quadrantes em coordenadas de display
       const labelSlices = [
         { x: 0,   y: lqH, w: lqW, h: lqH },
         { x: lqW, y: lqH, w: lqW, h: lqH },
@@ -396,24 +392,23 @@
         const cEmbed  = await embedSlice(outDoc, sourceDoc, i + halfPages, cMapped);
 
         if (isExpanded) {
-          const p1 = outDoc.addPage([OUT_W, OUT_H]);
-          drawQuadInZone(p1, lEmbed, lSlice, lMapped, lRot, OUT_W, OUT_H, 0, 0, true);
+          const p1 = outDoc.addPage([A4_WIDTH_PT, A4_HEIGHT_PT]);
+          drawQuadInZone(p1, lEmbed, lSlice, lMapped, lRot, A4_WIDTH_PT, A4_HEIGHT_PT, 0, 0, true);
 
-          const p2 = outDoc.addPage([OUT_W, OUT_H]);
-          drawQuadInZone(p2, cEmbed, cSlice, cMapped, cRot, OUT_W, OUT_H, 0, 0, true);
+          const p2 = outDoc.addPage([A4_WIDTH_PT, A4_HEIGHT_PT]);
+          drawQuadInZone(p2, cEmbed, cSlice, cMapped, cRot, A4_WIDTH_PT, A4_HEIGHT_PT, 0, 0, true);
 
         } else {
+          // Paisagem: etiqueta à esquerda (0..HALF), checklist à direita (HALF..OUT_W)
           const pg = outDoc.addPage([OUT_W, OUT_H]);
 
-          // labelVisW = lqW * optScale (ambos na mesma largura)
-          const labelVisW = lSlice.w * optScale;
-
-          // vAlign='bottom': label cola no limite com o checklist, sem gap
+          // Etiqueta: preenche a metade esquerda (421×595pt) completamente
           drawQuadInZone(pg, lEmbed, lSlice, lMapped, lRot,
-            OUT_W, LABEL_ZONE, 0, CHECK_ZONE, true, 'bottom');
+            HALF, OUT_H, 0, 0, true);
 
+          // Checklist: preenche a metade direita (421×595pt), girado -90°
           drawChecklistRotated(pg, cEmbed, cMapped, cRot,
-            OUT_W, CHECK_ZONE, 0, 0, labelVisW);
+            HALF, OUT_H, HALF, 0);
         }
 
         done += 1;
@@ -1111,9 +1106,7 @@
               const lqW = lDisp.width/2, lqH = lDisp.height/2;
               const cqW = cDisp.width/2, cqH = cDisp.height/2;
 
-              const optScale   = A4_H / (lqH + cqW * lqW / Math.max(1, cqH));
-              const LABEL_ZONE = Math.min(lqH * optScale, A4_H - 1);
-              const CHECK_ZONE = A4_H - LABEL_ZONE;
+              const HALF = A4_H / 2; // 421 pt
 
               const lSlices = [
                 {x:0,y:lqH,w:lqW,h:lqH},{x:lqW,y:lqH,w:lqW,h:lqH},
@@ -1137,9 +1130,10 @@
                   const p2 = outDoc.addPage([A4_W, A4_H]);
                   drawInZone(p2, cE, cs, cm, cRot, A4_W, A4_H, 0, 0, true);
                 } else {
-                  const pg = outDoc.addPage([A4_W, A4_H]);
-                  drawInZone(pg, lE, ls, lm, lRot, A4_W, LABEL_ZONE, 0, CHECK_ZONE, true, 'bottom');
-                  drawCheckRotated(pg, cE, cm, cRot, A4_W, CHECK_ZONE, 0, 0, ls.w * optScale);
+                  // Paisagem: etiqueta esquerda, checklist direita, ambos preenchem completamente
+                  const pg = outDoc.addPage([A4_H, A4_W]);
+                  drawInZone(pg, lE, ls, lm, lRot, HALF, A4_W, 0, 0, true);
+                  drawCheckRotated(pg, cE, cm, cRot, HALF, A4_W, HALF, 0);
                 }
 
                 done += 1;
